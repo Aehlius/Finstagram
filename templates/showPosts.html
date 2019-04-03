@@ -1,0 +1,25 @@
+<html>
+    <head>
+        <title>Finstagram</title>
+    </head>
+<body>
+    <h1>Here are your posts:</h1>
+
+<table>
+	<th>Time</th>
+	<th>Post</th>
+
+{% for line in content %}
+	<tr>
+        <td>{{line.photoOwner}}</td>
+		<td>{{line.timestamp}}</td>
+        <td>{{line.caption}}</td>
+        <td><img src="/image/{{line.filePath}}" width="100"/></td>
+
+	</tr>
+{% endfor %}
+
+</table>
+        <a href="/">Go back</a>
+</body>
+</html>

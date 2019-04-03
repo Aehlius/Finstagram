@@ -1,0 +1,27 @@
+<html>
+    <head>
+        <title>Finstagram</title>
+    </head>
+    <body style="background-color: #ffcccc; text-align: center;">
+        <h1 style="font-family: Impact, Charcoal, sans-serif; color: white; ">Finstagram</h1>
+        <h2  style="color: #333333; ">Hello, {{ username }}!</h2>
+        {% with messages=get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <h2>{{ message }}</h2>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div>
+            <a href="/images">View Images</a></br>
+            <a href="/showPosts">See posts shared with you</a></br>
+            <a href="/upload">Upload an Image</a></br>
+            <a href="/createGroup">Create a new Friend Group</a></br>
+            <a href="/addFriend">Add a Friend</a></br>
+            <a href="/logout">Logout</a></br>
+
+
+        </div>
+    </body>
+</html>
