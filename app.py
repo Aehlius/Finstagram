@@ -242,13 +242,27 @@ def showPosts():
 
     user = session['username']
     cursor = connection.cursor()
-    query = 'SELECT timestamp, photoOwner, caption, filePath FROM photo ORDER BY timestamp'
-    #change the query also make it so it shows the actual picture
-    cursor.execute(query)
+    query = 'SELECT DISTINCT timestamp, photoOwner, caption, filePath FROM photo WHERE photoOwner=%s ORDER BY timestamp'
+    cursor.execute(query, user)
     data = cursor.fetchall()
     cursor.close()
 
-    return render_template('showPosts.html', content=data)
+    cursor = connection.cursor()
+    query = 'SELECT DISTINCT timestamp, photoOwner, caption, filePath FROM photo NATURAL JOIN share NATURAL JOIN ' \
+            'belong WHERE photo.photoID=share.photoID AND belong.username=%s ORDER BY timestamp'
+    cursor.execute(query, user)
+    data2 = cursor.fetchall()
+    cursor.close()
+
+    #some sort of query for groups
+    cursor = connection.cursor()
+    query = 'SELECT DISTINCT timestamp, photoOwner, caption, filePath FROM photo NATURAL JOIN follow WHERE ' \
+            'photo.allFollowers=1 AND follow.acceptedFollow=1 ORDER BY timestamp'
+    cursor.execute(query)
+    data3 = cursor.fetchall()
+    cursor.close()
+
+    return render_template('showPosts.html', myposts=data, groupposts=data2, followposts=data3)
 
 if __name__ == "__main__":
     if not os.path.isdir("images"):
