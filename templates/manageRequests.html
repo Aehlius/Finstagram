@@ -1,0 +1,47 @@
+<html>
+<head>
+</head>
+<body>
+
+
+<h1>Accept or Reject requests</h1>
+<br>
+<form action="/manageRequests" method='POST'>
+<h2>Follower Requests</h2> </br>
+{% for line in followReq %}
+		{{line.followeeUsername}}
+		<input type="checkbox" name="faccept" value="{{line.followerUsername + '-' + line.followerUsername}}"/>
+		Accept
+		<input type="checkbox" name="freject" value="{{line.followerUsername + '-' + line.followerUsername}}"/>
+	Reject
+</br>
+{% endfor %}
+
+<h2>Tag Requests</h2> </br>
+{% for line in tagReq %}
+		<img src="/image/{{line.filePath}}" width="50"/>
+		<input type="checkbox" name="taccept" value="{{line.username + '-' + line.photoID|string()}}"/>
+		Accept
+		<input type="checkbox" name="treject" value="{{line.username + '-' + line.photoID|string()}}"/>
+	Reject
+</br>
+{% endfor %}
+<h2>Group requests</h2> </br>
+{% for line in groupReq %}
+		{{line.groupName}}
+		<input type="checkbox" name="gaccept" value="{{line.groupName + '-' + line.username}}"/>
+		Accept
+		<input type="checkbox" name="greject" value="{{line.groupName + '-' + line.username}}"/>
+	Reject
+</br>
+{% endfor %}
+<input type="submit" value="Accept/Reject">
+</form>
+
+
+<a href="/">Go back</a>
+
+</body>
+
+
+</html>

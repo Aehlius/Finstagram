@@ -3,62 +3,33 @@
         <title>Finstagram</title>
     </head>
 <body>
-    <h1>Here are your posts:</h1>
+    <h1>Here are posts viewable by you:</h1>
 
 <table>
 	<th>Owner</th>
 	<th>Time</th>
-    <th>Caption</th>
-     <th>Image</th>
-{% for line in myposts %}
+  <th>Caption</th>
+  <th>Image</th>
+  <th>People Tagged</th>
+{% for line in posts %}
 	<tr>
-        <td>{{line.photoOwner}}</td>
+    <td>{{line.photoOwner}}</td>
 		<td>{{line.timestamp}}</td>
-        <td>{{line.caption}}</td>
-        <td><img src="/image/{{line.filePath}}" width="100"/></td>
-
+    <td>{{line.caption}}</td>
+    <td><img src="/image/{{line.filePath}}" width="100"/></td>
+    <td>
+{% for name in tags %}
+{% if name.photoID==line.photoID %}
+  {{name.username}}
+{%endif %}
+{% endfor %}
+     </td>
 	</tr>
 {% endfor %}
 
 </table>
 
-<h1>Here are your group posts:</h1>
 
-<table>
-	<th>Owner</th>
-	<th>Time</th>
-    <th>Caption</th>
-     <th>Image</th>
-{% for line in groupposts %}
-	<tr>
-        <td>{{line.photoOwner}}</td>
-		<td>{{line.timestamp}}</td>
-        <td>{{line.caption}}</td>
-        <td><img src="/image/{{line.filePath}}" width="100"/></td>
-
-	</tr>
-{% endfor %}
-
-</table>
-
-        <h1>Here are posts by those you follow:</h1>
-
-<table>
-	<th>Owner</th>
-	<th>Time</th>
-    <th>Caption</th>
-     <th>Image</th>
-{% for line in followposts %}
-	<tr>
-        <td>{{line.photoOwner}}</td>
-		<td>{{line.timestamp}}</td>
-        <td>{{line.caption}}</td>
-        <td><img src="/image/{{line.filePath}}" width="100"/></td>
-
-	</tr>
-{% endfor %}
-
-</table>
         <a href="/">Go back</a>
 </body>
 </html>

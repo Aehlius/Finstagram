@@ -72,7 +72,7 @@ def register():
 def loginAuth():
     if request.form:
         requestData = request.form
-        username = requestData["username"]
+        username = requestData["username"].lower()
         plaintextPasword = requestData["password"]
         hashedPassword = hashlib.sha256(plaintextPasword.encode("utf-8")).hexdigest()
 
@@ -94,7 +94,7 @@ def loginAuth():
 def registerAuth():
     if request.form:
         requestData = request.form
-        username = requestData["username"]
+        username = requestData["username"].lower()
         plaintextPasword = requestData["password"]
         hashedPassword = hashlib.sha256(plaintextPasword.encode("utf-8")).hexdigest()
         firstName = requestData["fname"]
@@ -118,22 +118,98 @@ def logout():
     session.pop("username")
     return redirect("/")
 
-@app.route("/uploadImage", methods=["POST"])
+@app.route("/uploader", methods=["POST","GET"])
+@login_required
+def uploader():
+    user = session["username"].lower()
+    q = "SELECT DISTINCT groupName, groupOwner FROM closefriendgroup NATURAL JOIN " \
+        "belong WHERE closefriendgroup.groupOwner=%s OR (belong.username=%s AND acceptedReq=1)"
+    cursor = connection.cursor()
+    cursor.execute(q,(user,user))
+    groups = cursor.fetchall()
+    cursor.close()
+
+    #q = "SELECT * FROM belong WHERE username=%s"
+    #cursor = connection.cursor()
+    #cursor.execute(q,user)
+    #groups = cursor.fetchall()
+    #cursor.close()
+
+
+    return render_template("uploader.html", groups=groups)
+
+@app.route("/uploadImage", methods=["POST","GET"])
 @login_required
 def upload_image():
     if request.files:
+        user = session["username"].lower()
+        q = "SELECT * FROM closefriendgroup"
+        cursor = connection.cursor()
+        cursor.execute(q)
+        owns = cursor.fetchall()
+        cursor.close()
+
+        q = "SELECT * FROM belong WHERE username=%s"
+        cursor = connection.cursor()
+        cursor.execute(q, user)
+        groups = cursor.fetchall()
+        cursor.close()
+
         image_file = request.files.get("imageToUpload", "")
         image_name = image_file.filename
         filepath = os.path.join(IMAGES_DIR, image_name)
         image_file.save(filepath)
-        query = "INSERT INTO photo (timestamp, filePath) VALUES (%s, %s)"
-        with connection.cursor() as cursor:
-            cursor.execute(query, (time.strftime('%Y-%m-%d %H:%M:%S'), image_name))
+
+        caption=request.form['caption']
+        share_to = request.form.getlist('share_to')
+        insert = 'INSERT into photo(photoOwner, timestamp, filePath, caption, allFollowers) \
+        	VALUES (%s, %s, %s, %s, %s)'
+        if share_to[0] == 'public':
+                cursor=connection.cursor()
+                cursor.execute(insert, (user, time.strftime('%Y-%m-%d %H:%M:%S'), image_name,caption, 1))
+                connection.commit()
+                cursor.close()
+
+        else:
+            cursor = connection.cursor()
+            cursor.execute(insert, (user, time.strftime('%Y-%m-%d %H:%M:%S'), image_name, caption, 0))
+            connection.commit()
+            query = 'SELECT max(photoID) FROM photo'
+            cursor.execute(query)
+            max_item_id = cursor.fetchone()
+            for fg in share_to:
+                pg = fg.split('-')
+                groupName=pg[0]
+                groupOwner=pg[1]
+                insert = 'INSERT into share(groupName, groupOwner, photoID) VALUES(%s, %s, %s)'
+                cursor.execute(insert, (groupName, groupOwner, max_item_id['max(photoID)']))
+                connection.commit()
+            cursor.close()
+
+        #image_file = request.files.get("imageToUpload", "")
+        #image_name = image_file.filename
+        #filepath = os.path.join(IMAGES_DIR, image_name)
+        #image_file.save(filepath)
+        #query = "INSERT INTO photo (timestamp, filePath, photoOwner) VALUES (%s, %s, %s)"
+        #with connection.cursor() as cursor:
+        #    cursor.execute(query, (time.strftime('%Y-%m-%d %H:%M:%S'), image_name, user))
         message = "Image has been successfully uploaded."
-        return render_template("upload.html", message=message)
+        return render_template("upload.html", message=message, owns=owns, groups=groups)
     else:
+        user = session["username"]
+        q = "SELECT * FROM closefriendgroup"
+        cursor = connection.cursor()
+        cursor.execute(q)
+        owns = cursor.fetchall()
+        cursor.close()
+        q = "SELECT * FROM belong WHERE username=%s"
+        cursor = connection.cursor()
+        cursor.execute(q, user)
+        groups = cursor.fetchall()
+        cursor.close()
+
         message = "Failed to upload image."
-        return render_template("upload.html", message=message)
+        return render_template("upload.html", message=message, owns=owns, groups=groups)
 
 
 #queries
@@ -146,10 +222,10 @@ def addFriend():
 
 
     if request.method=='POST':
-        user = session["username"]
+        user = session["username"].lower()
 
         friend = request.form['friend'].lower()
-        fg = request.form['fg']
+        fg = request.form['fg'].lower()
 
         q = "SELECT * FROM belong WHERE groupOwner = %s AND username = %s AND groupName = %s"
         cursor = connection.cursor()
@@ -184,7 +260,7 @@ def addFriend():
             flash("group does not exist")
             return home(note)
 
-        q = "INSERT INTO belong(username, groupOwner, groupName) VALUES (%s, %s, %s)"
+        q = "INSERT INTO belong(username, groupOwner, groupName, acceptedReq, reqResponded) VALUES (%s, %s, %s,0,0)"
         cursor = connection.cursor()
         cursor.execute(q, (friend, user, fg))
         connection.commit()
@@ -203,9 +279,9 @@ def createGroup():
 
 
     if request.method=='POST':
-        user = session["username"]
+        user = session["username"].lower()
 
-        fg = request.form['newfg']
+        fg = request.form['newfg'].lower()
 
         q = "SELECT * FROM closefriendgroup WHERE groupOwner = %s AND groupName = %s"
         cursor = connection.cursor()
@@ -223,7 +299,7 @@ def createGroup():
         cursor.execute(q, (user, fg))
         connection.commit()
         cursor.close()
-        q = "INSERT INTO belong(username, groupOwner, groupName) VALUES (%s, %s, %s)"
+        q = "INSERT INTO belong(username, groupOwner, groupName, acceptedReq, reqResponded) VALUES (%s, %s, %s, 1, 1)"
         cursor = connection.cursor()
         cursor.execute(q, (user, user, fg))
         connection.commit()
@@ -240,29 +316,286 @@ def showPosts():
         error = "Please log in to continue"
         return render_template('index.html', error=error)
 
-    user = session['username']
+    user = session['username'].lower()
     cursor = connection.cursor()
-    query = 'SELECT DISTINCT timestamp, photoOwner, caption, filePath FROM photo WHERE photoOwner=%s ORDER BY timestamp'
-    cursor.execute(query, user)
+    query = 'SELECT photoID, timestamp, caption, photoOwner, filePath FROM photo WHERE photoOwner=%s ' \
+        'OR photoID IN (SELECT photoID FROM share NATURAL JOIN belong WHERE belong.groupName=%s AND ' \
+'belong.acceptedReq=1) OR photoID IN (SELECT photoID FROM follow WHERE follow.followeeUsername=%s and follow.acceptedFollow=1)'
+    cursor.execute(query, (user, user, user))
     data = cursor.fetchall()
     cursor.close()
 
-    cursor = connection.cursor()
-    query = 'SELECT DISTINCT timestamp, photoOwner, caption, filePath FROM photo NATURAL JOIN share NATURAL JOIN ' \
-            'belong WHERE photo.photoID=share.photoID AND belong.username=%s ORDER BY timestamp'
-    cursor.execute(query, user)
-    data2 = cursor.fetchall()
+    cursor=connection.cursor()
+    tagquery='SELECT * FROM tag'
+    cursor.execute(tagquery)
+    tags=cursor.fetchall()
     cursor.close()
+
+    #cursor = connection.cursor()
+    #query = 'SELECT DISTINCT timestamp, photoOwner, caption, filePath FROM photo NATURAL JOIN share NATURAL JOIN ' \
+    #        'belong WHERE photo.photoID=share.photoID AND belong.username=%s ORDER BY timestamp'
+    #cursor.execute(query, user)
+    #data2 = cursor.fetchall()
+    #cursor.close()
 
     #some sort of query for groups
+    #cursor = connection.cursor()
+    #query = 'SELECT DISTINCT timestamp, photoOwner, caption, filePath FROM photo NATURAL JOIN follow WHERE ' \
+    #        'photo.allFollowers=1 OR follow.acceptedFollow=1 ORDER BY timestamp'
+    #cursor.execute(query)
+    #data3 = cursor.fetchall()
+    #cursor.close()
+
+   #SELECT DISTINT photoID FROM photo NATURAL JOIN share NATURAL JOIN follow
+    return render_template('showPosts.html', posts=data, tags=tags)
+
+@app.route("/manageRequests", methods=['GET','POST'])
+def manageRequests():
+    if 'username' not in session:
+        error = "Please log in to continue"
+        return render_template('index.html', error=error)
+
+    user = session['username'].lower()
     cursor = connection.cursor()
-    query = 'SELECT DISTINCT timestamp, photoOwner, caption, filePath FROM photo NATURAL JOIN follow WHERE ' \
-            'photo.allFollowers=1 AND follow.acceptedFollow=1 ORDER BY timestamp'
-    cursor.execute(query)
-    data3 = cursor.fetchall()
+    query = 'SELECT * FROM follow WHERE followeeUsername=%s AND reqResponded=0'
+    cursor.execute(query, user)
+    followReq = cursor.fetchall()
+
+    query = 'SELECT * FROM tag NATURAL JOIN photo WHERE username=%s AND reqResponded=0'
+    cursor.execute(query, user)
+    tagReq = cursor.fetchall()
+
+    query = 'SELECT * FROM belong WHERE username=%s AND reqResponded=0'
+    cursor.execute(query, user)
+    groupReq = cursor.fetchall()
+
     cursor.close()
 
-    return render_template('showPosts.html', myposts=data, groupposts=data2, followposts=data3)
+
+    if request.method=='POST':
+        faccept = request.form.getlist('faccept')
+        taccept = request.form.getlist('taccept')
+        gaccept = request.form.getlist('gaccept')
+        freject=request.form.getlist('freject')
+        treject = request.form.getlist('treject')
+        greject = request.form.getlist('greject')
+
+        faquery = 'UPDATE follow SET acceptedFollow=1, reqResponded=1 WHERE followerUsername=%s AND followeeUsername=%s'
+        taquery = 'UPDATE tag SET acceptedTag=1, reqResponded=1 WHERE username=%s AND photoID=%s'
+        gaquery = 'UPDATE belong SET acceptedReq=1, reqResponded=1 WHERE username=%s AND groupName=%s'
+        frquery = 'UPDATE follow SET acceptedFollow=0, reqResponded=1 WHERE followerUsername=%s AND followeeUsername=%s'
+        trquery = 'UPDATE tag SET acceptedTag=0, reqResponded=1 WHERE username=%s AND photoID=%s'
+        grquery = 'UPDATE belong SET acceptedReq=0, reqResponded=1 WHERE username=%s AND groupName=%s'
+
+        cursor=connection.cursor()
+        for row in faccept:
+            items=row.split('-')
+            cursor.execute(faquery, (items[1],items[0]))
+            connection.commit()
+
+        for row in freject:
+            items=row.split('-')
+            cursor.execute(frquery, (items[1],items[0]))
+            connection.commit()
+
+        for row in taccept:
+            items=row.split('-')
+            cursor.execute(taquery, (items[0],int(items[1])))
+            connection.commit()
+
+        for row in treject:
+            items=row.split('-')
+            cursor.execute(trquery, (items[0],int(items[1])))
+            connection.commit()
+
+        for row in gaccept:
+            items=row.split('-')
+            cursor.execute(gaquery, (items[1],items[0]))
+            connection.commit()
+
+        for row in greject:
+            items=row.split('-')
+            cursor.execute(grquery, (items[1],items[0]))
+            connection.commit()
+
+
+        cursor.close()
+        flash('Requests have been updated')
+        return home()
+
+
+    return render_template('manageRequests.html', followReq=followReq, tagReq=tagReq, groupReq=groupReq)
+
+@app.route("/follow", methods=['GET','POST'])
+def follow():
+    if 'username' not in session:
+        error = "Please log in to continue"
+        return render_template('index.html', error=error)
+
+
+    if request.method=='POST':
+        user = session["username"].lower()
+        followee = request.form['followee'].lower()
+        q = "SELECT * FROM follow WHERE followerUsername = %s"
+        cursor = connection.cursor()
+        cursor.execute(q, (user))
+        check = cursor.fetchone()
+        cursor.close()
+
+        if followee==user:
+            flash("Can't follow yourself")
+            return home()
+
+        if check:
+            flash("Already follow")
+            return home()
+
+        q="INSERT INTO follow(followeeUsername, followerUsername, acceptedFollow, reqResponded) VALUES (%s, %s, %s, %s)"
+        cursor = connection.cursor()
+        cursor.execute(q, (followee, user, 0, 0))
+        connection.commit()
+        cursor.close()
+
+        #note = "Group has been created."
+        flash('Request has been sent')
+        return home()
+
+    return render_template('follow.html')
+
+@app.route("/searchPoster", methods=['GET','POST'])
+def searchPoster():
+    if 'username' not in session:
+        error = "Please log in to continue"
+        return render_template('index.html', error=error)
+
+    query='SELECT photoID, timestamp, caption, photoOwner, filePath FROM photo WHERE (photoOwner=%s ' \
+    'OR photoID IN (SELECT photoID FROM share NATURAL JOIN belong WHERE belong.groupName=%s AND ' \
+    'belong.acceptedReq=1) OR photoID IN (SELECT photoID FROM follow WHERE follow.followeeUsername=%s and follow.acceptedFollow=1)) AND photoOwner=%s'
+
+    cursor=connection.cursor()
+    tagquery='SELECT * FROM tag'
+    cursor.execute(tagquery)
+    tags=cursor.fetchall()
+    cursor.close()
+
+    if request.method=='POST':
+        user = session["username"].lower()
+        poster=request.form['poster'].lower()
+        cursor = connection.cursor()
+        cursor.execute(query, (user, user, user, poster))
+        posts=cursor.fetchall()
+        cursor.close()
+        return render_template('showPosts.html', posts=posts, tags=tags)
+
+    return render_template('searchPoster.html')
+
+@app.route("/searchTag", methods=['GET', 'POST'])
+def searchTag():
+    if 'username' not in session:
+        error = "Please log in to continue"
+        return render_template('index.html', error=error)
+
+    query='SELECT photoID, timestamp, caption, photoOwner, filePath FROM photo NATURAL JOIN tag WHERE (photoOwner=%s ' \
+    'OR photoID IN (SELECT photoID FROM share NATURAL JOIN belong WHERE belong.groupName=%s AND ' \
+    'belong.acceptedReq=1) OR photoID IN (SELECT photoID FROM follow WHERE follow.followeeUsername=%s and follow.acceptedFollow=1)) AND tag.username=%s'
+
+    cursor=connection.cursor()
+    tagquery='SELECT * FROM tag'
+    cursor.execute(tagquery)
+    tags=cursor.fetchall()
+    cursor.close()
+
+    if request.method=='POST':
+        user = session["username"].lower()
+        tagee=request.form['tag'].lower()
+        cursor = connection.cursor()
+        cursor.execute(query, (user, user, user, tagee))
+        posts=cursor.fetchall()
+        cursor.close()
+        return render_template('showPosts.html', posts=posts, tags=tags)
+
+    return render_template('searchTag.html')
+
+
+@app.route("/tag", methods=['GET', 'POST'])
+def tag():
+    if 'username' not in session:
+        error = "Please log in to continue"
+        return render_template('index.html', error=error)
+
+    user = session["username"].lower()
+    query = 'SELECT photoID, timestamp, caption, photoOwner, filePath FROM photo WHERE photoOwner=%s ' \
+            'OR photoID IN (SELECT photoID FROM share NATURAL JOIN belong WHERE belong.groupName=%s AND ' \
+            'belong.acceptedReq=1) OR photoID IN (SELECT photoID FROM follow WHERE follow.followeeUsername=%s and follow.acceptedFollow=1)'
+    cursor=connection.cursor()
+    cursor.execute(query,(user,user,user))
+    posts=cursor.fetchall()
+    cursor.close()
+
+    if request.method == 'POST':
+        friend=request.form['friend'].lower()
+        images = request.form.getlist('tag')
+
+        # query for all images viewable
+        cursor = connection.cursor()
+        check = 'SELECT photoID, timestamp, caption, photoOwner, filePath FROM photo WHERE photoOwner=%s ' \
+            'OR photoID IN (SELECT photoID FROM share NATURAL JOIN belong WHERE belong.groupName=%s AND ' \
+            'belong.acceptedReq=1) OR photoID IN (SELECT photoID FROM follow WHERE follow.followeeUsername=%s and follow.acceptedFollow=1) AND photoID=%s'
+
+        check2q='SELECT * FROM tag WHERE photoID=%s AND username=%s' \
+               ''
+        for row in images:
+            cursor.execute(check, (friend, friend, friend,row))
+            check=cursor.fetchone()
+
+            if not check:
+                message = "Error: Photo(s) not viewable by tagged user"
+                return render_template('tag.html', posts=posts, message=message)
+
+            cursor.execute(check2q,(row,friend))
+            check2=cursor.fetchone()
+            if check2:
+                message = "Friend already tagged"
+                return render_template('tag.html', posts=posts, message=message)
+
+            insert = 'INSERT INTO tag(username, photoID, acceptedTag, reqResponded) VALUES(%s, %s, %s,%s)'
+            cursor.execute(insert,(friend,row,0,0))
+            connection.commit()
+            cursor.close()
+            message="Friends have been tagged"
+            return render_template('tag.html', posts=posts, message=message)
+
+        cursor.close()
+    return render_template("tag.html",posts=posts)
+
+
+@app.route("/unfollow", methods=['GET', 'POST'])
+def unfollow():
+    if 'username' not in session:
+        error = "Please log in to continue"
+        return render_template('index.html', error=error)
+
+    if request.method=='POST':
+        user = session["username"].lower()
+        unfollowee=request.form["username"].lower()
+        cursor=connection.cursor()
+        q='SELECT * FROM follow WHERE followeeUsername=%s AND followerUsername-%s'
+        cursor.execute(q,(unfollowee, user))
+        check=cursor.fetchone()
+        cursor.close()
+        if not check:
+            flash('You do not follow this user')
+            return home()
+
+        update='DELETE FROM follow WHERE followeeUsername=%s and followerUsername=%s'
+        cursor=connection.cursor()
+        cursor.execute(update,(unfollowee,user))
+        connection.commit()
+        cursor.close()
+        flash('You have unfollowed the user')
+        return home()
+
+    return render_template("unfollow.html")
 
 if __name__ == "__main__":
     if not os.path.isdir("images"):
